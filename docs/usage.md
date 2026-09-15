@@ -55,7 +55,7 @@ GET /{ip}
 POST /
 ```
 
-`GET /` looks up the client address of the current TCP connection. The service deliberately ignores client-supplied `X-Forwarded-For` and `X-Real-IP` headers. Behind a reverse proxy, this endpoint therefore reports the proxy address. Resolve the original client address at a trusted proxy layer, or add an explicit trusted-proxy policy before relying on forwarding headers.
+`GET /` uses the first address in `X-Forwarded-For` when the header is present and otherwise uses the client address of the current TCP connection. The forwarded address must be an IPv4 or IPv6 address without a port, CIDR prefix, or zone identifier. The service trusts this header directly, so an untrusted client can spoof the reported address. Deployments that require an authoritative client address must place the service behind a reverse proxy that removes incoming forwarding headers and sets `X-Forwarded-For` itself.
 
 `GET /{ip}` looks up the address supplied in the path. It accepts IPv4, IPv6, and IPv4-mapped IPv6 addresses. Mapped addresses are normalized to IPv4. Hostnames, port numbers, CIDR prefixes, and IPv6 zone identifiers are rejected.
 
@@ -114,7 +114,7 @@ A valid batch request returns `200` with an overall status and separate success 
 
 | Field | Description |
 | --- | --- |
-| `ip` | Normalized lookup address; for `/`, the current connection's client address |
+| `ip` | Normalized lookup address; for `/`, the first `X-Forwarded-For` address or the current connection's client address |
 | `ip_version` | IP version, either `4` or `6` |
 | `country` | Country or region name |
 | `province` | First-level administrative subdivision |

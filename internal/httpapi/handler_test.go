@@ -81,7 +81,6 @@ func TestRootLooksUpRemoteAddress(t *testing.T) {
 			}), quietLogger(), func() bool { return true })
 			request := httptest.NewRequest(http.MethodGet, "/", nil)
 			request.RemoteAddr = test.remote
-			request.Header.Set("X-Forwarded-For", "198.51.100.99")
 			recorder := httptest.NewRecorder()
 			handler.ServeHTTP(recorder, request)
 			if recorder.Code != http.StatusOK {
@@ -99,6 +98,59 @@ func TestRootLooksUpRemoteAddress(t *testing.T) {
 			if got := recorder.Header().Get("Cache-Control"); got != noStoreCacheControl {
 				t.Fatalf("Cache-Control = %q, want %q", got, noStoreCacheControl)
 			}
+		})
+	}
+}
+
+func TestRootLooksUpForwardedAddress(t *testing.T) {
+	for _, test := range []struct {
+		name, forwarded, canonical string
+		version                    int
+	}{
+		{"IPv4", "198.51.100.99", "198.51.100.99", 4},
+		{"proxy chain", "198.51.100.99, 172.22.0.1", "198.51.100.99", 4},
+		{"IPv6", " 2001:db8::8, 172.22.0.1 ", "2001:db8::8", 6},
+		{"mapped IPv4", "::ffff:198.51.100.99", "198.51.100.99", 4},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var received netip.Addr
+			handler := New(locatorFunc(func(ip netip.Addr) (geo.Location, error) {
+				received = ip
+				return geo.Location{Country: "forwarded"}, nil
+			}), quietLogger(), func() bool { return true })
+			request := httptest.NewRequest(http.MethodGet, "/", nil)
+			request.RemoteAddr = "not-an-address"
+			request.Header.Set("X-Forwarded-For", test.forwarded)
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, request)
+
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("status = %d; body = %s", recorder.Code, recorder.Body)
+			}
+			var response LookupResponse
+			if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+				t.Fatal(err)
+			}
+			if response.IP != test.canonical || response.IPVersion != test.version || received.String() != test.canonical {
+				t.Fatalf("response = %+v, locator input = %s", response, received)
+			}
+		})
+	}
+}
+
+func TestRootRejectsInvalidForwardedAddress(t *testing.T) {
+	for _, forwarded := range []string{"invalid", " , 172.22.0.1", "1.2.3.4:80", "fe80::1%en0"} {
+		t.Run(forwarded, func(t *testing.T) {
+			handler := New(locatorFunc(func(netip.Addr) (geo.Location, error) {
+				t.Fatal("invalid forwarded address reached the database")
+				return geo.Location{}, nil
+			}), quietLogger(), func() bool { return true })
+			request := httptest.NewRequest(http.MethodGet, "/", nil)
+			request.RemoteAddr = "203.0.113.8:54321"
+			request.Header.Set("X-Forwarded-For", forwarded)
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, request)
+			assertError(t, recorder, http.StatusBadRequest, "invalid_ip")
 		})
 	}
 }

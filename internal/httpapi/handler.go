@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/netip"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"ips/internal/geo"
@@ -141,11 +142,19 @@ func New(locator Locator, logger *slog.Logger, ready func() bool) http.Handler {
 	mux.HandleFunc("/{$}", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet, http.MethodHead:
-			address, err := parseRemoteAddress(r.RemoteAddr)
-			if err != nil {
-				logger.ErrorContext(r.Context(), "client IP unavailable", "request_id", w.Header().Get("X-Request-ID"), "remote_addr", r.RemoteAddr, "error", err)
-				writeError(w, r, http.StatusInternalServerError, "internal_error", "client IP is unavailable")
-				return
+			address, forwarded, err := parseForwardedAddress(r.Header.Get("X-Forwarded-For"))
+			if forwarded {
+				if err != nil {
+					writeError(w, r, http.StatusBadRequest, "invalid_ip", "X-Forwarded-For must begin with one IPv4 or IPv6 address")
+					return
+				}
+			} else {
+				address, err = parseRemoteAddress(r.RemoteAddr)
+				if err != nil {
+					logger.ErrorContext(r.Context(), "client IP unavailable", "request_id", w.Header().Get("X-Request-ID"), "remote_addr", r.RemoteAddr, "error", err)
+					writeError(w, r, http.StatusInternalServerError, "internal_error", "client IP is unavailable")
+					return
+				}
 			}
 			lookup(w, r, address, noStoreCacheControl)
 		case http.MethodPost:
@@ -229,6 +238,15 @@ func lookupResponse(locator Locator, address netip.Addr) (LookupResponse, error)
 		version = 4
 	}
 	return LookupResponse{IP: address.String(), IPVersion: version, Location: location}, nil
+}
+
+func parseForwardedAddress(forwardedFor string) (netip.Addr, bool, error) {
+	if forwardedFor == "" {
+		return netip.Addr{}, false, nil
+	}
+	first, _, _ := strings.Cut(forwardedFor, ",")
+	address, err := parseLookupAddress(strings.TrimSpace(first))
+	return address, true, err
 }
 
 func parseRemoteAddress(remoteAddr string) (netip.Addr, error) {

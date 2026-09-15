@@ -9,8 +9,16 @@ paths:
   /:
     get:
       operationId: lookupClientIP
-      summary: Look up the current connection's client address
-      description: Uses the server-side connection address and does not trust X-Forwarded-For or X-Real-IP.
+      summary: Look up the reported client address
+      description: Uses the first X-Forwarded-For address when present and otherwise uses the current connection address. The forwarding header is trusted directly and may be spoofed unless an upstream proxy overwrites it.
+      parameters:
+        - name: X-Forwarded-For
+          in: header
+          required: false
+          description: Comma-separated proxy chain whose first value is used as the client IP address.
+          schema:
+            type: string
+          example: 203.0.113.8, 172.22.0.1
       responses:
         '200':
           description: Lookup completed. Unavailable location fields are returned as empty strings.
@@ -28,6 +36,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LookupResponse'
+        '400':
+          $ref: '#/components/responses/Error'
         '404':
           $ref: '#/components/responses/Error'
         '405':
@@ -76,7 +86,14 @@ paths:
           $ref: '#/components/responses/Error'
     head:
       operationId: inspectClientIP
-      summary: Return lookup status and headers for the current client address
+      summary: Return lookup status and headers for the reported client address
+      parameters:
+        - name: X-Forwarded-For
+          in: header
+          required: false
+          description: Comma-separated proxy chain whose first value is used as the client IP address.
+          schema:
+            type: string
       responses:
         '200':
           description: Lookup completed without a response body.
