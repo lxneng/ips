@@ -1,0 +1,6 @@
+/bin/
+/data/*.xdb
+/data/.download.*/
+/.env
+/coverage.out
+.DS_Store

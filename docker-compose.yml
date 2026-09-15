@@ -1,0 +1,27 @@
+name: ips
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ips:local
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${PORT:-18080}:8080"
+    environment:
+      HTTP_ADDR: ":8080"
+      IPV4_DB_PATH: /app/data/ip2region_v4.xdb
+      IPV6_DB_PATH: /app/data/ip2region_v6.xdb
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
