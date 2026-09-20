@@ -47,6 +47,14 @@ docker run -d --name ips --read-only \
 
 The multi-stage build produces a `scratch`-based runtime image containing only the static executable, databases, and database provenance files. The running container makes no external API calls.
 
+## Continuous image builds
+
+The `docker` workflow in `.github/workflows/docker.yml` builds the image on pull requests and on pushes to `main` and `v*` tags. Pull request builds verify the Dockerfile only. Pushes publish the image to `ghcr.io/<owner>/<repository>` with branch, tag, semantic version, commit, and `latest` tags:
+
+```bash
+docker pull ghcr.io/lxneng/ips:latest
+```
+
 ## Lookup API
 
 ```http
